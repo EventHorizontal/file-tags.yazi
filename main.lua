@@ -1,21 +1,24 @@
-return {
-	entry = function(_, job)
-		local action = job.args[1]
+local M = {}
 
-		local value, event = ya.input({
-			title = "tag name",
-			position = {
-				"center",
-				w = 30,
-			},
-		})
+M.entry = function(_, job)
+	local action = job.args[1]
 
-		ya.notify({
-			title = "File Tag",
-			content = "Registered tag '" .. value .. "'",
-			timeout = 6.5,
-			-- level = "info",
-		})
-	end,
-	setup = function(state, args) end,
-}
+	local value, event = ya.input({
+		title = "tag name",
+		position = {
+			"center",
+			w = 30,
+		},
+	})
+
+	ya.notify({
+		title = "File Tag",
+		content = "Registered tag '" .. value .. "'",
+		timeout = 6.5,
+		-- level = "info",
+	})
+end
+
+M.setup = function(state, args) end
+
+return M
