@@ -1,7 +1,7 @@
-- [ ] Get the currently selected files
-- [ ] Get the command to be done on the currently selected files
+- [x] Get the currently selected files
+- [x] Get the command to be done on the currently selected files
 - [ ] Add, remove and update tags
-- [ ] Save tags
-- [ ] Load tags
+- [x] Save tags
+- [x] Load tags
 - [ ] Filter by tags
 - [ ] Search by tags
