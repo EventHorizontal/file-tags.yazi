@@ -11,7 +11,7 @@ ya pack EventHorizontal/file-tags
 
 In your	`init.lua` file (located in `~/.config/yazi/`):
 
-```toml
+```lua
 require('file-tags').setup({
 		database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag_database.json"
 	})
