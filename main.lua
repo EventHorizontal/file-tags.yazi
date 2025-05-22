@@ -287,6 +287,7 @@ function M:entry(job)
 		toggle_modal()
 		set_cursor(0)
 		local tx, rx = ya.chan("mpsc")
+		local tx2, rx2 = ya.chan("mpsc")
 
 		function producer()
 			while true do
@@ -297,6 +298,11 @@ function M:entry(job)
 					if r == "quit" then
 						toggle_modal()
 						return
+					elseif r == "change" then
+						local done = false
+						while not done do
+							done = rx2:recv() or false
+						end
 					end
 				end
 			end
@@ -330,7 +336,41 @@ function M:entry(job)
 					M.save_table(self.tag_database, "tags.json")
 					ya.render()
 				elseif run == "change" then
-					-- TODO: Figure out how to not block special keys while the modal is up
+					local cursor = get_cursor()
+					local menu_items = get_menu_state()["items"]
+					local old_tag_name = menu_items[cursor + 1]
+					local new_tag_name, event = ya.input({
+						title = "Input new tag",
+						value = old_tag_name,
+						position = {
+							"center",
+							w = 30,
+						},
+					})
+
+					if event ~= 1 then
+						return
+					end
+
+					-- Remove old tag
+					local file = hovered()
+					array_remove(M.tag_database[file], function(t, i, _)
+						return t[i] ~= old_tag_name
+					end)
+					-- Add new tag
+					if M.tag_database[file] == nil then
+						M.tag_database[file] = { new_tag_name }
+					else
+						if not array_contains(M.tag_database[file], new_tag_name) then
+							table.insert(M.tag_database[file], new_tag_name)
+						end
+					end
+
+					set_menu_state({ title = "Tags", items = self.tag_database[file] })
+					M.save_table(self.tag_database, "tags.json")
+					ya.render()
+
+					tx2:send(true)
 				end
 			until not run
 		end

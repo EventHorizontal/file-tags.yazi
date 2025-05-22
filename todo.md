@@ -4,3 +4,4 @@
 - [x] Save tags
 - [x] Load tags
 - [x] Search by tags
+- [x] Change a tag to different tag
