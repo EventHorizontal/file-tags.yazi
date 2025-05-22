@@ -76,6 +76,9 @@ Press `us` to bring up the "Search tags" input field. Input the desired tag and 
 
 ## Issues
 
-This plugin searches through a list of every tag of every file when asked to search currently, which admittedly is not very performant. I hope to come back to this project and optimise that.
++ This plugin searches through a list of every tag of every file when asked to search currently, which admittedly is not very performant. I hope to come back to this project and optimise that.
++ Moving files will not be followed. I hope to fix this soon by shifting around the database entry.
++ Deleting a file similarly will not get rid of the file in the database.
++ The plugin does not use Yazi's DDS. I hope to change this in the future.
 
 If you use this plugin and encounter any technical difficulties, please write an issue and I will address them eventually.
