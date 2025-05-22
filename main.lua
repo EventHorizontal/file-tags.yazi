@@ -1,6 +1,5 @@
 local M = {}
 
--- TODO: Hardcoded path for now
 local defaultLocation = os.getenv("HOME") .. "/Desktop/"
 -- Plugins seem to have to be a single file so I'm dividing this
 -- into regions for organisation
@@ -60,6 +59,15 @@ function M.load_table(filename, location)
 end
 
 -- Helper Functions ####################################################
+
+local function array_contains(table, value)
+	for _, tag in ipairs(table) do
+		if tag == value then
+			return true
+		end
+	end
+	return false
+end
 
 local function array_remove(table, fn_should_keep)
 	local j, n = 1, #table
@@ -233,11 +241,12 @@ function M:entry(job)
 
 		local files = selected_or_hovered()
 		for _, file in ipairs(files) do
-			-- TODO: What if the file already exists in the array?
 			if M.tag_database[file] == nil then
 				M.tag_database[file] = { tag_name }
 			else
-				table.insert(M.tag_database[file], tag_name)
+				if not array_contains(M.tag_database[file], tag_name) then
+					table.insert(M.tag_database[file], tag_name)
+				end
 			end
 		end
 
@@ -342,11 +351,8 @@ function M:entry(job)
 
 		local results = {}
 		for file, tags in pairs(M.tag_database) do
-			for _, tag in ipairs(tags) do
-				if tag == tag_to_search then
-					results[#results + 1] = file
-					break
-				end
+			if array_contains(tags, tag_to_search) then
+				results[#results + 1] = file
 			end
 		end
 
