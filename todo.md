@@ -5,5 +5,7 @@
 - [x] Save tags
 - [x] Load tags
 - [x] Search by tags
+- [ ] Search for multiple tags
 - [x] Change a tag to different tag
 - [x] Sorting
+- [ ] Optimise some of the searching
