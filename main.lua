@@ -3,6 +3,16 @@ local M = {}
 local json = require("./json")
 local defaultLocation = "/home/cipher/Desktop/"
 
+local toggle_ui = ya.sync(function(self)
+	if self.children then
+		Modal:children_remove(self.children)
+		self.children = nil
+	else
+		self.children = Modal:children_add(self, 10)
+	end
+	ya.render()
+end)
+
 function M.saveTable(t, filename, location)
 	local loc = location
 	if not location then
@@ -97,7 +107,7 @@ local hovered = ya.sync(function()
 	return url.parent .. "/" .. url.name
 end)
 
-M.entry = function(self, job)
+function M:entry(job)
 	local action = job.args[1]
 
 	if not action then
@@ -162,13 +172,56 @@ M.entry = function(self, job)
 		end
 
 		M.saveTable(tag_database, "tags.json")
-	elseif action == "read" then
+	elseif action == "list" then
 		-- TODO: Create a UI panel that lists the tags of the current file being hovered
+		ya.dbg("hello")
+		toggle_ui()
 	end
 end
 
-M.redraw = function()
-	local rows = {}
+function M:new(area)
+	self:layout(area)
+	return self
+end
+
+function M:layout(area)
+	local chunks = ui.Layout()
+		:constraints({
+			ui.Constraint.Percentage(30),
+			ui.Constraint.Percentage(40),
+			ui.Constraint.Percentage(30),
+		})
+		:split(area)
+
+	local chunks = ui.Layout()
+		:direction(ui.Layout.HORIZONTAL)
+		:constraints({
+			ui.Constraint.Percentage(30),
+			ui.Constraint.Percentage(40),
+			ui.Constraint.Percentage(30),
+		})
+		:split(chunks[2])
+
+	self._area = chunks[2]
+end
+
+function M:redraw()
+	local tag_database = M.loadTable("tags.json")
+	local file = hovered()
+	local rows = { ui.Row(tag_database[file] or {}) }
+	return {
+		ui.Clear(self._area),
+		ui.Border(ui.Border.ALL)
+			:area(self._area)
+			:type(ui.Border.ROUNDED)
+			:style(ui.Style():fg("blue"))
+			:title(ui.Line("File Tags"):align(ui.Line.CENTER)),
+		ui.Table(rows)
+			:area(self._area:pad(ui.Pad(1, 2, 1, 2)))
+			:header(ui.Row({ "Tags" }):style(ui.Style():bold()))
+			:row(self.cursor)
+			:row_style(ui.Style():fg("blue"):underline()),
+	}
 end
 
 M.setup = function(state, opts) end
