@@ -1,7 +1,9 @@
 - [x] Get the currently selected files
 - [x] Get the command to be done on the currently selected files
-- [x] Add, remove
+- [x] Add tags
+- [x] Remove tags
 - [x] Save tags
 - [x] Load tags
 - [x] Search by tags
 - [x] Change a tag to different tag
+- [x] Sorting

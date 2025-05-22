@@ -1,19 +1,14 @@
 local M = {}
 
-local defaultLocation = os.getenv("HOME") .. "/Desktop/"
+local database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag_database.json"
 -- Plugins seem to have to be a single file so I'm dividing this
 -- into regions for organisation
 
 -- Saving and Loading ######################################################3
 
-function M.save_table(t, filename, location)
-	local loc = location
-	if not location then
-		loc = defaultLocation
-	end
-
+function M.save_table(t)
 	-- Open the file handle
-	local file, errorString = io.open(loc .. filename, "w")
+	local file, errorString = io.open(database_location, "w")
 
 	if not file then
 		-- Error occurred; output the cause
@@ -29,17 +24,13 @@ function M.save_table(t, filename, location)
 	end
 end
 
-function M.load_table(filename, location)
-	local loc = location
-	if not location then
-		loc = defaultLocation
-	end
-
+function M.load_table()
 	-- Open the file handle
-	local file, errorString = io.open(loc .. filename, "r")
+	local file, errorString = io.open(database_location, "r")
 
 	if not file then
-		local file, errorString = io.open(loc .. filename, "w")
+		os.execute("mkdir " .. os.getenv("HOME") .. "/.local/state/yazi/file-tags")
+		local file, errorString = io.open(database_location, "w")
 		if not file then
 			ya.dbg("File error: " .. errorString)
 		else
@@ -150,16 +141,17 @@ end)
 
 M.keys = {
 	{ on = "q", run = "quit" },
-	{ on = "<C-n>", run = "down" },
-	{ on = "j", run = "file_down" },
-	{ on = "<C-p>", run = "up" },
-	{ on = "k", run = "file_up" },
+	{ on = "j", run = "down" },
+	{ on = "<C-n>", run = "file_down" },
+	{ on = "k", run = "up" },
+	{ on = "<C-p>", run = "file_up" },
+	{ on = "a", run = "add" },
 	{ on = "d", run = "delete" },
 	{ on = "c", run = "change" },
 	{ on = "<Enter>", run = "jump" },
 }
 
-M.tag_database = M.load_table("tags.json")
+M.tag_database = M.load_table()
 
 function M:new(area)
 	self:layout(area)
@@ -248,9 +240,10 @@ function M:entry(job)
 					table.insert(M.tag_database[file], tag_name)
 				end
 			end
+			table.sort(M.tag_database[file])
 		end
 
-		M.save_table(M.tag_database, "tags.json")
+		M.save_table(M.tag_database)
 	elseif action == "delete" then
 		local tag_name, event = ya.input({
 			title = "Input tag",
@@ -273,14 +266,14 @@ function M:entry(job)
 			end
 		end
 
-		M.save_table(M.tag_database, "tags.json")
+		M.save_table(M.tag_database)
 	elseif action == "delete_all" then
 		local files = selected_or_hovered()
 		for _, file in ipairs(files) do
 			M.tag_database[file] = nil
 		end
 
-		M.save_table(M.tag_database, "tags.json")
+		M.save_table(M.tag_database)
 	elseif action == "list" then
 		local hovered_file = hovered()
 		set_menu_state({ title = "Tags", items = M.tag_database[hovered_file] })
@@ -298,7 +291,7 @@ function M:entry(job)
 					if r == "quit" then
 						toggle_modal()
 						return
-					elseif r == "change" then
+					elseif r == "change" or r == "add" then
 						local done = false
 						while not done do
 							done = rx2:recv() or false
@@ -327,13 +320,40 @@ function M:entry(job)
 					local _hovered_file = hovered()
 					set_menu_state({ title = "Tags", items = self.tag_database[_hovered_file] })
 					ya.render()
+				elseif run == "add" then
+					local file = hovered()
+					local tag_name, event = ya.input({
+						title = "Input new tag",
+						position = {
+							"center",
+							w = 30,
+						},
+					})
+
+					if event ~= 1 then
+						return
+					end
+					if M.tag_database[file] == nil then
+						M.tag_database[file] = { tag_name }
+					else
+						if not array_contains(M.tag_database[file], tag_name) then
+							table.insert(M.tag_database[file], tag_name)
+						end
+					end
+
+					table.sort(M.tag_database[file])
+
+					set_menu_state({ title = "Tags", items = self.tag_database[file] })
+					M.save_table(self.tag_database)
+					ya.render()
+					tx2:send()
 				elseif run == "delete" then
 					local file = hovered()
 					array_remove(self.tag_database[file], function(_, i, _)
 						return i ~= get_cursor() + 1
 					end)
 					set_menu_state({ title = "Tags", items = self.tag_database[file] })
-					M.save_table(self.tag_database, "tags.json")
+					M.save_table(self.tag_database)
 					ya.render()
 				elseif run == "change" then
 					local cursor = get_cursor()
@@ -366,8 +386,10 @@ function M:entry(job)
 						end
 					end
 
+					table.sort(M.tag_database[file])
+
 					set_menu_state({ title = "Tags", items = self.tag_database[file] })
-					M.save_table(self.tag_database, "tags.json")
+					M.save_table(self.tag_database)
 					ya.render()
 
 					tx2:send(true)
@@ -439,6 +461,8 @@ function M:entry(job)
 	end
 end
 
-M.setup = function(state, opts) end
+M.setup = function(state, opts)
+	defualtLocation = opts.database_location
+end
 
 return M
