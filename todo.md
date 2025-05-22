@@ -3,5 +3,4 @@
 - [x] Add, remove
 - [x] Save tags
 - [x] Load tags
-- [ ] Filter by tags
-- [ ] Search by tags
+- [x] Search by tags
