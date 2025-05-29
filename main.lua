@@ -79,19 +79,19 @@ local function array_remove(table, fn_should_keep)
 	return table
 end
 
-local selected_or_hovered = ya.sync(function()
+local get_selected_or_hovered_files = ya.sync(function()
 	local tab, urls = cx.active, {}
 	for _, url in pairs(tab.selected) do
-		urls[#urls + 1] = url.parent .. "/" .. url.name
+		urls[#urls + 1] = { full_path = url.parent .. "/" .. url.name, filename = url.name }
 	end
 	if #urls == 0 and tab.current.hovered then
 		local url = tab.current.hovered.url
-		urls[1] = url.parent .. "/" .. url.name
+		urls[1] = { full_path = url.parent .. "/" .. url.name, filename = url.name }
 	end
 	return urls
 end)
 
-local hovered = ya.sync(function()
+local get_hovered_files = ya.sync(function()
 	local url = cx.active.current.hovered.url
 	return url.parent .. "/" .. url.name
 end)
@@ -120,6 +120,18 @@ end)
 
 local get_cursor = ya.sync(function(state)
 	return state.cursor
+end)
+
+local set_cut_files = ya.sync(function(state, _cut_files)
+	state.cut_files = _cut_files
+end)
+
+local get_cut_files = ya.sync(function(state)
+	return state.cut_files
+end)
+
+local get_cwd = ya.sync(function(state)
+	return cx.active.current.cwd
 end)
 
 local update_cursor = ya.sync(function(self, cursor)
@@ -231,16 +243,17 @@ function M:entry(job)
 			return
 		end
 
-		local files = selected_or_hovered()
+		local files = get_selected_or_hovered_files()
 		for _, file in ipairs(files) do
-			if M.tag_database[file] == nil then
-				M.tag_database[file] = { tag_name }
+			local full_path = file.full_path
+			if M.tag_database[full_path] == nil then
+				M.tag_database[full_path] = { tag_name }
 			else
-				if not array_contains(M.tag_database[file], tag_name) then
-					table.insert(M.tag_database[file], tag_name)
+				if not array_contains(M.tag_database[full_path], tag_name) then
+					table.insert(M.tag_database[full_path], tag_name)
 				end
 			end
-			table.sort(M.tag_database[file])
+			table.sort(M.tag_database[full_path])
 		end
 
 		M.save_table(M.tag_database)
@@ -257,10 +270,10 @@ function M:entry(job)
 			return
 		end
 
-		local files = selected_or_hovered()
+		local files = get_selected_or_hovered_files()
 		for _, file in ipairs(files) do
-			if M.tag_database[file] ~= nil then
-				array_remove(M.tag_database[file], function(t, i, _)
+			if M.tag_database[file.full_path] ~= nil then
+				array_remove(M.tag_database[file.full_path], function(t, i, _)
 					return t[i] ~= tag_name
 				end)
 			end
@@ -268,14 +281,14 @@ function M:entry(job)
 
 		M.save_table(M.tag_database)
 	elseif action == "delete_all" then
-		local files = selected_or_hovered()
+		local files = get_selected_or_hovered_files()
 		for _, file in ipairs(files) do
-			M.tag_database[file] = nil
+			M.tag_database[file.full_path] = nil
 		end
 
 		M.save_table(M.tag_database)
 	elseif action == "list" then
-		local hovered_file = hovered()
+		local hovered_file = get_hovered_files()
 		set_menu_state({ title = "Tags", items = M.tag_database[hovered_file] })
 		toggle_modal()
 		set_cursor(0)
@@ -312,16 +325,16 @@ function M:entry(job)
 					update_cursor(1)
 				elseif run == "file_up" then
 					ya.mgr_emit("arrow", { -1 })
-					local _hovered_file = hovered()
+					local _hovered_file = get_hovered_files()
 					set_menu_state({ title = "Tags", items = self.tag_database[_hovered_file] })
 					ya.render()
 				elseif run == "file_down" then
 					ya.mgr_emit("arrow", { 1 })
-					local _hovered_file = hovered()
+					local _hovered_file = get_hovered_files()
 					set_menu_state({ title = "Tags", items = self.tag_database[_hovered_file] })
 					ya.render()
 				elseif run == "add" then
-					local file = hovered()
+					local file = get_hovered_files()
 					local tag_name, event = ya.input({
 						title = "Input new tag",
 						position = {
@@ -348,7 +361,7 @@ function M:entry(job)
 					ya.render()
 					tx2:send()
 				elseif run == "delete" then
-					local file = hovered()
+					local file = get_hovered_files()
 					array_remove(self.tag_database[file], function(_, i, _)
 						return i ~= get_cursor() + 1
 					end)
@@ -373,7 +386,7 @@ function M:entry(job)
 					end
 
 					-- Remove old tag
-					local file = hovered()
+					local file = get_hovered_files()
 					array_remove(M.tag_database[file], function(t, i, _)
 						return t[i] ~= old_tag_name
 					end)
@@ -458,6 +471,43 @@ function M:entry(job)
 		end
 
 		ya.join(producer, consumer)
+	elseif action == "cut" then
+		local files = get_selected_or_hovered_files()
+		set_cut_files(files)
+		ya.notify({
+			title = "File-tags cut",
+			content = "Staging database entries of cut files",
+			timeout = 1.0,
+		})
+		ya.mgr_emit("yank", { cut = true })
+	elseif action == "paste" then
+		local files = get_cut_files()
+		for i, entry in ipairs(files) do
+			local full_path = entry.full_path
+			if self.tag_database[full_path] ~= nil then
+				local filename = entry.filename
+				local cwd = get_cwd()
+				-- Transfer the files to the new location
+				self.tag_database[cwd.parent .. "/" .. cwd.name .. "/" .. filename] = self.tag_database[full_path]
+				-- delete the old location
+				self.tag_database[full_path] = nil
+			end
+			self.save_table(self.tag_database)
+		end
+		ya.notify({
+			title = "File-tags paste",
+			content = "Moving database entries of pasted files",
+			timeout = 1.0,
+		})
+		ya.mgr_emit("paste", { follow = false, force = false })
+	elseif action == "uncut" then
+		set_cut_files({})
+		ya.notify({
+			title = "File-tags uncut",
+			content = "Unstaging database entries of canceled files",
+			timeout = 1.0,
+		})
+		ya.mgr_emit("unyank", {})
 	end
 end
 
