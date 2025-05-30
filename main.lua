@@ -1,8 +1,9 @@
 local M = {}
 
-M.database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag_database.json"
 -- Plugins seem to have to be a single file so I'm dividing this
 -- into regions for organisation
+
+M.database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag_database.json"
 
 -- Saving and Loading ######################################################3
 
@@ -16,6 +17,7 @@ function M.save_table(t)
 		return false
 	else
 		local serialised, err = ya.json_encode(t)
+		ya.dbg("saved", serialised, err)
 		-- Write encoded JSON data to file
 		file:write(serialised)
 		-- Close the file handle
@@ -29,12 +31,12 @@ function M.load_table()
 	local file, errorString = io.open(M.database_location, "r")
 
 	if not file then
-		os.execute("mkdir " .. os.getenv("HOME") .. "/.local/state/yazi/file-tags")
-		local file, errorString = io.open(M.database_location, "w")
-		if not file then
+		os.execute("mkdir " .. M.database_location)
+		local file2, errorString2 = io.open(M.database_location, "w")
+		if not file2 then
 			ya.dbg("File error: " .. errorString)
 		else
-			file:write("{}")
+			file2:write("{}")
 			return {}
 		end
 	else
@@ -42,12 +44,15 @@ function M.load_table()
 		local contents = file:read("*a")
 		-- Decode JSON data into Lua table
 		local t = ya.json_decode(contents)
+		ya.dbg("load: ", t)
 		-- Close the file handle
 		io.close(file)
 		-- Return table
 		return t
 	end
 end
+
+M.tag_database = M.load_table()
 
 -- Helper Functions ####################################################
 
@@ -152,6 +157,17 @@ local function url_to_absolute_path(url)
 	return url.parent .. "/" .. url.name
 end
 
+function split(inputstr, sep)
+	if sep == nil then
+		sep = "%s"
+	end
+	local t = {}
+	for str in string.gmatch(inputstr, "([^" .. sep .. "]+)") do
+		table.insert(t, str)
+	end
+	return t
+end
+
 -- Plugin Methods ##########################################
 -- credit to yazi-rs/plugins/mount.yazi for the modal viewing code
 
@@ -168,8 +184,6 @@ M.keys = {
 	{ on = "c", run = "change" },
 	{ on = "<Enter>", run = "jump" },
 }
-
-M.tag_database = M.load_table()
 
 function M:new(area)
 	self:layout(area)
@@ -188,9 +202,9 @@ function M:layout(area)
 	local chunks = ui.Layout()
 		:direction(ui.Layout.HORIZONTAL)
 		:constraints({
-			ui.Constraint.Percentage(30),
-			ui.Constraint.Percentage(40),
-			ui.Constraint.Percentage(30),
+			ui.Constraint.Percentage(10),
+			ui.Constraint.Percentage(80),
+			ui.Constraint.Percentage(10),
 		})
 		:split(chunks[2])
 
@@ -206,7 +220,7 @@ function M:redraw()
 	local title = get_menu_state()["title"]
 	local menu_items = get_menu_state()["items"]
 	for _, item in ipairs(menu_items or {}) do
-		rows[#rows + 1] = ui.Row({ item })
+		rows[#rows + 1] = ui.Row({ string.sub(item, math.max(#item - self._area.w + 6, 0)) })
 	end
 	return {
 		ui.Clear(self._area),
@@ -230,6 +244,8 @@ function M:scroll() end
 function M:touch() end
 
 function M:entry(job)
+	M.tag_database = M.load_table()
+
 	local action = job.args[1]
 
 	if not action then
@@ -261,7 +277,6 @@ function M:entry(job)
 			end
 			table.sort(M.tag_database[full_path])
 		end
-
 		M.save_table(M.tag_database)
 	elseif action == "delete" then
 		local tag_name, event = ya.input({
@@ -422,7 +437,7 @@ function M:entry(job)
 
 		ya.join(producer, consumer)
 	elseif action == "search" then
-		local tag_to_search, event = ya.input({
+		local input, event = ya.input({
 			title = "Input tag",
 			position = {
 				"center",
@@ -434,9 +449,19 @@ function M:entry(job)
 			return
 		end
 
+		local tags_to_search = split(input, ",")
+		ya.dbg(tags_to_search)
+
 		local results = {}
 		for file, tags in pairs(M.tag_database) do
-			if array_contains(tags, tag_to_search) then
+			local passes_filter = true
+			for _, tag in ipairs(tags_to_search) do
+				if not array_contains(tags, tag) then
+					ya.dbg(file, tag)
+					passes_filter = false
+				end
+			end
+			if passes_filter then
 				results[#results + 1] = file
 			end
 		end
@@ -485,10 +510,7 @@ function M:entry(job)
 end
 
 M.setup = function(state, opts)
-	M.database_location = opts.database_location or M.database_location
 	M.should_notify = opts.notify or true
-
-	M.tag_database = M.load_table()
 
 	-- Update database whenever a files are renamed
 	ps.sub("rename", function(body)
@@ -506,6 +528,26 @@ M.setup = function(state, opts)
 				timeout = 2.0,
 				debounce = 0.3,
 			})
+		end
+	end)
+
+	ps.sub("bulk", function(body)
+		for old_file, new_file in pairs(body) do
+			local old_filename = url_to_absolute_path(old_file)
+			local new_filename = url_to_absolute_path(new_file)
+			if M.tag_database[old_filename] then
+				M.tag_database[new_filename] = M.tag_database[old_filename]
+				M.tag_database[old_filename] = nil
+			end
+			M.save_table(M.tag_database)
+			if M.should_notify then
+				ya.notify({
+					title = "File-Tags",
+					content = "Detected bulk renamed files",
+					timeout = 2.0,
+					debounce = 0.3,
+				})
+			end
 		end
 	end)
 
