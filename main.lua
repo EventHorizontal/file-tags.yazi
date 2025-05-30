@@ -157,10 +157,12 @@ end
 
 M.keys = {
 	{ on = "q", run = "quit" },
-	{ on = "j", run = "down" },
-	{ on = "<C-n>", run = "file_down" },
-	{ on = "k", run = "up" },
-	{ on = "<C-p>", run = "file_up" },
+	{ on = "j", run = "file_down" },
+	{ on = "<C-j>", run = "down" },
+	{ on = "h", run = "directory_up" },
+	{ on = "l", run = "directory_down" },
+	{ on = "k", run = "file_up" },
+	{ on = "<C-k>", run = "up" },
 	{ on = "a", run = "add" },
 	{ on = "d", run = "delete" },
 	{ on = "c", run = "change" },
@@ -327,6 +329,10 @@ function M:entry(job)
 					update_cursor(-1)
 				elseif run == "down" then
 					update_cursor(1)
+				elseif run == "directory_up" then
+					ya.mgr_emit("leave", {})
+				elseif run == "directory_down" then
+					ya.mgr_emit("enter", {})
 				elseif run == "file_up" then
 					ya.mgr_emit("arrow", { -1 })
 					local _hovered_file = get_hovered_file().full_path
