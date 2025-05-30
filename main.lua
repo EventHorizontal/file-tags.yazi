@@ -363,7 +363,7 @@ function M:entry(job)
 					set_menu_state({ title = "Tags", items = self.tag_database[file] })
 					M.save_table(self.tag_database)
 					ya.render()
-					tx2:send()
+					tx2:send(true)
 				elseif run == "delete" then
 					local file = get_hovered_file().full_path
 					array_remove(self.tag_database[file], function(_, i, _)
