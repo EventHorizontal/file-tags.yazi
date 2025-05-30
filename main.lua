@@ -1,6 +1,6 @@
 local M = {}
 
-local database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag_database.json"
+M.database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag_database.json"
 -- Plugins seem to have to be a single file so I'm dividing this
 -- into regions for organisation
 
@@ -8,7 +8,7 @@ local database_location = os.getenv("HOME") .. "/.local/state/yazi/file-tags/tag
 
 function M.save_table(t)
 	-- Open the file handle
-	local file, errorString = io.open(database_location, "w")
+	local file, errorString = io.open(M.database_location, "w")
 
 	if not file then
 		-- Error occurred; output the cause
@@ -26,11 +26,11 @@ end
 
 function M.load_table()
 	-- Open the file handle
-	local file, errorString = io.open(database_location, "r")
+	local file, errorString = io.open(M.database_location, "r")
 
 	if not file then
 		os.execute("mkdir " .. os.getenv("HOME") .. "/.local/state/yazi/file-tags")
-		local file, errorString = io.open(database_location, "w")
+		local file, errorString = io.open(M.database_location, "w")
 		if not file then
 			ya.dbg("File error: " .. errorString)
 		else
@@ -91,9 +91,9 @@ local get_selected_or_hovered_files = ya.sync(function()
 	return urls
 end)
 
-local get_hovered_files = ya.sync(function()
+local get_hovered_file = ya.sync(function()
 	local url = cx.active.current.hovered.url
-	return url.parent .. "/" .. url.name
+	return { full_path = url.parent .. "/" .. url.name, filename = url.name }
 end)
 
 local toggle_modal = ya.sync(function(self)
@@ -147,6 +147,10 @@ local update_cursor = ya.sync(function(self, cursor)
 	end
 	ya.render()
 end)
+
+local function url_to_absolute_path(url)
+	return url.parent .. "/" .. url.name
+end
 
 -- Plugin Methods ##########################################
 -- credit to yazi-rs/plugins/mount.yazi for the modal viewing code
@@ -288,7 +292,7 @@ function M:entry(job)
 
 		M.save_table(M.tag_database)
 	elseif action == "list" then
-		local hovered_file = get_hovered_files()
+		local hovered_file = get_hovered_file().full_path
 		set_menu_state({ title = "Tags", items = M.tag_database[hovered_file] })
 		toggle_modal()
 		set_cursor(0)
@@ -325,16 +329,16 @@ function M:entry(job)
 					update_cursor(1)
 				elseif run == "file_up" then
 					ya.mgr_emit("arrow", { -1 })
-					local _hovered_file = get_hovered_files()
+					local _hovered_file = get_hovered_file().full_path
 					set_menu_state({ title = "Tags", items = self.tag_database[_hovered_file] })
 					ya.render()
 				elseif run == "file_down" then
 					ya.mgr_emit("arrow", { 1 })
-					local _hovered_file = get_hovered_files()
+					local _hovered_file = get_hovered_file().full_path
 					set_menu_state({ title = "Tags", items = self.tag_database[_hovered_file] })
 					ya.render()
 				elseif run == "add" then
-					local file = get_hovered_files()
+					local file = get_hovered_file().full_path
 					local tag_name, event = ya.input({
 						title = "Input new tag",
 						position = {
@@ -361,7 +365,7 @@ function M:entry(job)
 					ya.render()
 					tx2:send()
 				elseif run == "delete" then
-					local file = get_hovered_files()
+					local file = get_hovered_file().full_path
 					array_remove(self.tag_database[file], function(_, i, _)
 						return i ~= get_cursor() + 1
 					end)
@@ -386,7 +390,7 @@ function M:entry(job)
 					end
 
 					-- Remove old tag
-					local file = get_hovered_files()
+					local file = get_hovered_file().full_path
 					array_remove(M.tag_database[file], function(t, i, _)
 						return t[i] ~= old_tag_name
 					end)
@@ -471,48 +475,93 @@ function M:entry(job)
 		end
 
 		ya.join(producer, consumer)
-	elseif action == "cut" then
-		local files = get_selected_or_hovered_files()
-		set_cut_files(files)
-		ya.notify({
-			title = "File-tags cut",
-			content = "Staging database entries of cut files",
-			timeout = 1.0,
-		})
-		ya.mgr_emit("yank", { cut = true })
-	elseif action == "paste" then
-		local files = get_cut_files()
-		for i, entry in ipairs(files) do
-			local full_path = entry.full_path
-			if self.tag_database[full_path] ~= nil then
-				local filename = entry.filename
-				local cwd = get_cwd()
-				-- Transfer the files to the new location
-				self.tag_database[cwd.parent .. "/" .. cwd.name .. "/" .. filename] = self.tag_database[full_path]
-				-- delete the old location
-				self.tag_database[full_path] = nil
-			end
-			self.save_table(self.tag_database)
-		end
-		ya.notify({
-			title = "File-tags paste",
-			content = "Moving database entries of pasted files",
-			timeout = 1.0,
-		})
-		ya.mgr_emit("paste", { follow = false, force = false })
-	elseif action == "uncut" then
-		set_cut_files({})
-		ya.notify({
-			title = "File-tags uncut",
-			content = "Unstaging database entries of canceled files",
-			timeout = 1.0,
-		})
-		ya.mgr_emit("unyank", {})
 	end
 end
 
 M.setup = function(state, opts)
-	defualtLocation = opts.database_location
+	M.database_location = opts.database_location or M.database_location
+	M.should_notify = opts.notify or true
+
+	M.tag_database = M.load_table()
+
+	-- Update database whenever a files are renamed
+	ps.sub("rename", function(body)
+		local old_filename = url_to_absolute_path(body.from)
+		local new_filename = url_to_absolute_path(body.to)
+		if M.tag_database[old_filename] then
+			M.tag_database[new_filename] = M.tag_database[old_filename]
+			M.tag_database[old_filename] = nil
+		end
+		M.save_table(M.tag_database)
+		if M.should_notify then
+			ya.notify({
+				title = "File-Tags",
+				content = "Detected renamed files",
+				timeout = 2.0,
+				debounce = 0.3,
+			})
+		end
+	end)
+
+	-- Update database whenever a files are moved
+	ps.sub("move", function(body)
+		for _, file in ipairs(body.items) do
+			local old_filename = url_to_absolute_path(file.from)
+			local new_filename = url_to_absolute_path(file.to)
+			if M.tag_database[old_filename] then
+				M.tag_database[new_filename] = M.tag_database[old_filename]
+				M.tag_database[old_filename] = nil
+			end
+			M.save_table(M.tag_database)
+			if M.should_notify then
+				ya.notify({
+					title = "File-Tags",
+					content = "Detected moved files",
+					timeout = 2.0,
+					debounce = 0.3,
+				})
+			end
+		end
+	end)
+
+	-- Update database whenever files are deleted
+	ps.sub("delete", function(body)
+		for _, file in ipairs(body.urls) do
+			local filename = url_to_absolute_path(file)
+			ya.dbg(file)
+			if M.tag_database[filename] then
+				M.tag_database[filename] = nil
+			end
+			M.save_table(M.tag_database)
+			if M.should_notify then
+				ya.notify({
+					title = "File-Tags",
+					content = "Detected deleted files",
+					timeout = 2.0,
+					debounce = 0.3,
+				})
+			end
+		end
+	end)
+
+	ps.sub("trash", function(body)
+		for _, file in ipairs(body.urls) do
+			local filename = url_to_absolute_path(file)
+			ya.dbg(file)
+			if M.tag_database[filename] then
+				M.tag_database[filename] = nil
+			end
+			M.save_table(M.tag_database)
+			if M.should_notify then
+				ya.notify({
+					title = "File-Tags",
+					content = "Detected trashed files",
+					timeout = 2.0,
+					debounce = 0.3,
+				})
+			end
+		end
+	end)
 end
 
 return M
