@@ -5,7 +5,8 @@
 - [x] Save tags
 - [x] Load tags
 - [x] Search by tags
-- [ ] Search for multiple tags
+- [x] Search for multiple tags
 - [x] Change a tag to different tag
 - [x] Sorting
+- [x] Account for moving, deleting and renaming files
 - [ ] Optimise some of the searching
